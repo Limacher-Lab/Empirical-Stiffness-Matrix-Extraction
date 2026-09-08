@@ -182,10 +182,6 @@ def compare_beam_theory(weight_g, load_loc_mm, exp_nodes_mm, exp_disp_mm, b_mm=2
         # Add to the total beam deflection (Linear Superposition)
         v_theory_total += v_theory_current
     
-    # NOTE: Euler-Bernoulli yields a positive magnitude for deflection. 
-    # If your DIC outputs negative Z values for a downward displacement, 
-    # you may need to invert the sign of v_theory or take the absolute of exp_disp_mm.
-    # For now, we plot the absolute magnitude.
     exp_disp_abs = np.abs(exp_disp_mm)
     
     # 5. Plotting the Comparison
@@ -532,7 +528,7 @@ if __name__ == "__main__":
     #                     node_locations=nodes)
 
     # print_matrix(F)
-    # plot_matrix_heatmap(X)
+    # plot_matrix_heatmap(K)
     # plot_norm_matrix_heatmap(X)
     # print(round(np.linalg.cond(X),2))
     # print(F)
