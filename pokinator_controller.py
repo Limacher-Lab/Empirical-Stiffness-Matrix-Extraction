@@ -215,7 +215,7 @@ class PokinatorController(PokinatorCore):
         
     #     return final_force, recorded_forces
     
-    def probe_z_axis_limited(self, max_distance_mm, target_force_g=100.0, speed_rpm=24, hold_time_s=60.0, deadband_pct=0.1, debounce_time_s=0.05):
+    def probe_z_axis_limited(self, max_distance_mm, target_force_g=100.0, speed_rpm=24, hold_time_s=60.0, deadband_pct=0.05, debounce_time_s=0.05):
         """
         Actively probes and maintains force on the Z-axis using a PI control loop.
         Features a 5-second sliding window to detect true mechanical equilibrium.
