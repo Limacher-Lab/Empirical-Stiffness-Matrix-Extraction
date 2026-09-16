@@ -26,6 +26,24 @@ class PokinatorProgrammer:
             'Z': self.z_lim
         }
 
+    def _parse_node_list(self, node_str):
+        """Helper function: Parses '1-39' or '1, 10, 15' into a set of string node IDs."""
+        nodes = set()
+        parts = [p.strip() for p in node_str.split(',')]
+        for part in parts:
+            if not part:
+                continue
+            if '-' in part:
+                try:
+                    start, end = part.split('-')
+                    for i in range(int(start), int(end) + 1):
+                        nodes.add(str(i))
+                except ValueError:
+                    pass # Ignore malformed ranges gracefully
+            else:
+                nodes.add(part)
+        return nodes
+
     def validate_gcode(self, filepath):
         """
         Pre-flight check: runs a Kinematic Simulation to catch boundary errors,
@@ -45,6 +63,11 @@ class PokinatorProgrammer:
             'Y': self.pokinator.axes.get('Y', {}).get('current_pos', 0.0),
             'Z': self.pokinator.axes.get('Z', {}).get('current_pos', 0.0)
         }
+
+        # Node filtering states
+        only_nodes = set()
+        skip_nodes = set()
+        filtering_active = False
         
         # Added utf-8-sig to prevent BOM reading errors during pre-flight
         with open(filepath, mode='r', encoding='utf-8-sig') as file:
@@ -61,6 +84,30 @@ class PokinatorProgrammer:
 
                 node = row[0].strip()
                 instruction = row[1].strip().upper()
+
+                # --- NODE FILTERING COMMANDS ---
+                if instruction in ["ONLY_NODES", "SKIP_NODES"]:
+                    if len(row) < 3:
+                        print(f"[!] Line {line_num} Error: {instruction} missing node list parameters.")
+                        errors_found = True
+                        continue
+                    
+                    # Reconstruct the parameter string in case unquoted commas split it across cells
+                    node_str = ",".join(cell.strip() for cell in row[2:])
+                    parsed_nodes = self._parse_node_list(node_str)
+                    
+                    if instruction == "ONLY_NODES":
+                        only_nodes.update(parsed_nodes)
+                        filtering_active = True
+                    elif instruction == "SKIP_NODES":
+                        skip_nodes.update(parsed_nodes)
+                    continue
+
+                # --- APPLY FILTER ---
+                if filtering_active and node not in only_nodes:
+                    continue
+                if node in skip_nodes:
+                    continue
                 
                 # --- HOMING COMMAND VALIDATION ---
                 if instruction.endswith("_HOME"):
@@ -174,7 +221,7 @@ class PokinatorProgrammer:
                 axis = instruction
                 if axis not in self.limits:
                     # Updated the error message to include the new commands
-                    print(f"[!] Line {line_num} Error: Invalid axis '{axis}'. Expected X, Y, Z, HOLD, Z_PROBE, Z_PROBE_LTD, TRIGGER, or _HOME.")
+                    print(f"[!] Line {line_num} Error: Invalid axis '{axis}'. Expected X, Y, Z, HOLD, Z_PROBE, Z_PROBE_LTD, TRIGGER, _HOME, ONLY_NODES, or SKIP_NODES.")
                     errors_found = True
                     continue
                     
@@ -214,6 +261,11 @@ class PokinatorProgrammer:
         print(f"\n[*] Initiating Program Sequence: '{filepath}'...")
         
         probe_data = {}
+
+        # Node filtering states
+        only_nodes = set()
+        skip_nodes = set()
+        filtering_active = False
         
         # 'utf-8-sig' automatically strips the invisible BOM (ï»¿) left by Excel
         with open(filepath, mode='r', encoding='utf-8-sig') as file:
@@ -226,6 +278,26 @@ class PokinatorProgrammer:
                     
                 node = row[0].strip()
                 instruction = row[1].strip().upper()
+
+                # --- NODE FILTERING COMMANDS ---
+                if instruction in ["ONLY_NODES", "SKIP_NODES"]:
+                    node_str = ",".join(cell.strip() for cell in row[2:])
+                    parsed_nodes = self._parse_node_list(node_str)
+                    
+                    if instruction == "ONLY_NODES":
+                        only_nodes.update(parsed_nodes)
+                        filtering_active = True
+                        print(f"\n[*] [Line {line_num}] ONLY_NODES Engaged: Restricting sequence to {len(only_nodes)} specified nodes.")
+                    elif instruction == "SKIP_NODES":
+                        skip_nodes.update(parsed_nodes)
+                        print(f"\n[*] [Line {line_num}] SKIP_NODES Engaged: Bypassing {len(skip_nodes)} specified nodes.")
+                    continue
+
+                # --- APPLY FILTER ---
+                if filtering_active and node not in only_nodes:
+                    continue
+                if node in skip_nodes:
+                    continue
                 
                 # --- HOMING ---
                 if instruction.endswith("_HOME"):
