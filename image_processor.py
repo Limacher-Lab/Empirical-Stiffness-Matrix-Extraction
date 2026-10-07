@@ -542,8 +542,10 @@ if __name__ == "__main__":
     # deflection = np.linalg.inv(K) @ force_vector
     # compare_beam_theory(weight_g=[load_g,4*load_g], load_loc_mm=load_loc, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=deflection)
 
-    load_g = np.ones(15)*100
-    load_loc = np.array([[30+i*10] for i in range(15)])
-    force_vector = np.ones(15)*(100*9.81)/1000
-    deflection = np.linalg.inv(K) @ force_vector
-    compare_beam_theory(weight_g=load_g, load_loc_mm=load_loc, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=deflection)
+    # load_g = np.ones(15)*100
+    # load_loc = np.array([[30+i*10] for i in range(15)])
+    # force_vector = np.ones(15)*(100*9.81)/1000
+    # deflection = np.linalg.inv(K) @ force_vector
+    # compare_beam_theory(weight_g=load_g, load_loc_mm=load_loc, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=deflection)
+
+    
