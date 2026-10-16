@@ -215,6 +215,223 @@ def compare_beam_theory(weight_g, load_loc_mm, exp_nodes_mm, exp_disp_mm, b_mm=2
     
     plt.show()
 
+def compare_beam_theory_timoshenko(weight_g, load_loc_mm, exp_nodes_mm, exp_disp_mm, 
+                                   b_mm=20, h_mm=0.970, L_mm=200, E_GPa=64.18, 
+                                   nu=0.33, kappa=5.0/6.0, G_GPa=None):
+    """
+    Compares experimental DIC nodal displacements with a 1D Timoshenko 
+    cantilever beam model and plots the results. Supports multiple point loads
+    via superposition.
+    
+    Parameters:
+    - weight_g : Applied load mass (grams) - float or array-like
+    - load_loc_mm : Distance from the clamped base to the applied load (mm) - float or array-like
+    - exp_nodes_mm : Array/List of nodal x-coordinates from DIC (mm)
+    - exp_disp_mm : Array/List of nodal z-displacements from DIC (mm)
+    - b_mm : Beam width (mm)
+    - h_mm : Beam thickness (mm)
+    - L_mm : Beam total length (mm)
+    - E_GPa : Modulus of Elasticity (GPa)
+    - nu : Poisson's ratio (dimensionless, default 0.33 for aluminum)
+    - kappa : Timoshenko shear correction factor (default 5/6 for rectangular cross-section)
+    - G_GPa : Shear Modulus (GPa). If None, calculated from E_GPa and nu.
+    """
+    
+    # 0. Normalize inputs to numpy arrays (handles both floats and lists gracefully)
+    weights = np.atleast_1d(weight_g)
+    locs = np.atleast_1d(load_loc_mm)
+    
+    # Pre-flight check to ensure the loads and locations match
+    if len(weights) != len(locs):
+        raise ValueError("[!] Error: The number of provided weights must match the number of load locations.")
+    
+    # 1. Unit Conversions for standard [N, mm, MPa] framework
+    E_MPa = E_GPa * 1000.0                # 1 GPa = 1000 MPa (N/mm^2)
+    
+    if G_GPa is None:
+        G_MPa = E_MPa / (2.0 * (1.0 + nu)) # Isotropic shear modulus relation
+    else:
+        G_MPa = G_GPa * 1000.0
+    
+    # 2. Geometric Properties: Area (A) and Area Moment of Inertia (I)
+    A = b_mm * h_mm                       # mm^2
+    I = (b_mm * (h_mm**3)) / 12.0         # mm^4
+    
+    # 3. Generate theoretical high-resolution X array
+    x_theory = np.linspace(0, L_mm, 500)
+    
+    # 4. Calculate Timoshenko deflection (Superposition of Bending + Shear)
+    v_theory_total = np.zeros_like(x_theory)
+    
+    for F_mass, a_loc in zip(weights, locs):
+        # Convert this specific weight to Newtons
+        F_N = (F_mass * 9.81) / 1000.0    
+        
+        # Bending deflection component (identical to Euler-Bernoulli)
+        v_bending = np.where(
+            x_theory <= a_loc,
+            (F_N * x_theory**2) / (6.0 * E_MPa * I) * (3.0 * a_loc - x_theory),
+            (F_N * a_loc**2) / (6.0 * E_MPa * I) * (3.0 * x_theory - a_loc)
+        )
+        
+        # Shear deflection component:
+        # Linearly increases from x = 0 to x = a_loc, then remains constant for x > a_loc
+        # because internal shear force V(x) = 0 beyond the point load.
+        v_shear = np.where(
+            x_theory <= a_loc,
+            (F_N * x_theory) / (kappa * A * G_MPa),
+            (F_N * a_loc) / (kappa * A * G_MPa)
+        )
+        
+        # Add both components to the total beam deflection
+        v_theory_total += (v_bending + v_shear)
+    
+    exp_disp_abs = np.abs(exp_disp_mm)
+    
+    # 5. Plotting the Comparison
+    plt.figure(figsize=(10, 6))
+    
+    # Theoretical curve
+    plt.plot(x_theory, v_theory_total, label='Timoshenko Theory (Superposition)', 
+             color='#2ca02c', linewidth=2.5, zorder=1)
+    
+    # Experimental nodal data
+    plt.scatter(exp_nodes_mm, exp_disp_abs, label='Pokinator/DIC Experimental', 
+                color='#ff7f0e', marker='x', s=60, linewidths=2, zorder=2)
+    
+    # Annotate load position(s)
+    for i, a_loc in enumerate(locs):
+        label_str = 'Load Application Point' if i == 0 else ""
+        plt.axvline(x=a_loc, color='gray', linestyle='--', alpha=0.5, label=label_str)
+    
+    # Dynamic Formatting
+    if len(weights) == 1:
+        subtitle = f"(Load: {weights[0]}g at {locs[0]}mm)"
+    else:
+        subtitle = f"(Multiple Loads: {len(weights)} Points of Contact)"
+        
+    plt.title(f'Beam Deflection Profile: Experimental vs. Timoshenko Theory\n{subtitle}', 
+              fontsize=14, fontweight='bold')
+    plt.xlabel('Distance from Clamped Base, X (mm)', fontsize=12)
+    plt.ylabel('Absolute Deflection, Z (mm)', fontsize=12)
+    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.legend(fontsize=11)
+    plt.tight_layout()
+    
+    plt.show()
+
+def compare_both_beam_theories(weight_g, load_loc_mm, exp_nodes_mm, exp_disp_mm, 
+                               b_mm=20, h_mm=0.970, L_mm=200, E_GPa=64.18, 
+                               nu=0.33, kappa=5.0/6.0, G_GPa=None):
+    """
+    Compares experimental DIC nodal displacements with both 1D Euler-Bernoulli 
+    and 1D Timoshenko cantilever beam models on the same plot. Supports multiple 
+    point loads via superposition.
+    
+    Parameters:
+    - weight_g : Applied load mass (grams) - float or array-like
+    - load_loc_mm : Distance from the clamped base to the applied load (mm) - float or array-like
+    - exp_nodes_mm : Array/List of nodal x-coordinates from DIC (mm)
+    - exp_disp_mm : Array/List of nodal z-displacements from DIC (mm)
+    - b_mm : Beam width (mm)
+    - h_mm : Beam thickness (mm)
+    - L_mm : Beam total length (mm)
+    - E_GPa : Modulus of Elasticity (GPa)
+    - nu : Poisson's ratio (dimensionless, default 0.33 for aluminum)
+    - kappa : Timoshenko shear correction factor (default 5/6 for rectangular cross-section)
+    - G_GPa : Shear Modulus (GPa). If None, calculated from E_GPa and nu.
+    """
+    
+    # 0. Normalize inputs to numpy arrays (handles both floats and lists gracefully)
+    weights = np.atleast_1d(weight_g)
+    locs = np.atleast_1d(load_loc_mm)
+    
+    # Pre-flight check to ensure the loads and locations match
+    if len(weights) != len(locs):
+        raise ValueError("[!] Error: The number of provided weights must match the number of load locations.")
+    
+    # 1. Unit Conversions for standard [N, mm, MPa] framework
+    E_MPa = E_GPa * 1000.0                # 1 GPa = 1000 MPa (N/mm^2)
+    
+    if G_GPa is None:
+        G_MPa = E_MPa / (2.0 * (1.0 + nu)) # Isotropic shear modulus relation
+    else:
+        G_MPa = G_GPa * 1000.0
+    
+    # 2. Geometric Properties: Area (A) and Area Moment of Inertia (I)
+    A = b_mm * h_mm                       # mm^2
+    I = (b_mm * (h_mm**3)) / 12.0         # mm^4
+    
+    # 3. Generate theoretical high-resolution X array
+    x_theory = np.linspace(0, L_mm, 500)
+    
+    # 4. Calculate Deflections (Superposition)
+    v_eb_total = np.zeros_like(x_theory)
+    v_shear_total = np.zeros_like(x_theory)
+    
+    for F_mass, a_loc in zip(weights, locs):
+        # Convert this specific weight to Newtons
+        F_N = (F_mass * 9.81) / 1000.0    
+        
+        # Bending deflection component (Euler-Bernoulli)
+        v_bending = np.where(
+            x_theory <= a_loc,
+            (F_N * x_theory**2) / (6.0 * E_MPa * I) * (3.0 * a_loc - x_theory),
+            (F_N * a_loc**2) / (6.0 * E_MPa * I) * (3.0 * x_theory - a_loc)
+        )
+        
+        # Shear deflection component (Timoshenko addition)
+        v_shear = np.where(
+            x_theory <= a_loc,
+            (F_N * x_theory) / (kappa * A * G_MPa),
+            (F_N * a_loc) / (kappa * A * G_MPa)
+        )
+        
+        # Aggregate components via linear superposition
+        v_eb_total += v_bending
+        v_shear_total += v_shear
+        
+    # Total Timoshenko deflection is the sum of bending and shear
+    v_timo_total = v_eb_total + v_shear_total
+    
+    exp_disp_abs = np.abs(exp_disp_mm)
+    
+    # 5. Plotting the Comparison
+    plt.figure(figsize=(10, 6))
+    
+    # Euler-Bernoulli Theoretical curve (Solid Blue)
+    plt.plot(x_theory, v_eb_total, label='Euler-Bernoulli Theory', 
+             color='#1f77b4', linestyle='-', linewidth=2.5, zorder=1)
+    
+    # Timoshenko Theoretical curve (Dashed Green - renders cleanly over EB when overlapping)
+    plt.plot(x_theory, v_timo_total, label='Timoshenko Theory', 
+             color='#2ca02c', linestyle='--', linewidth=2.5, zorder=2)
+    
+    # Experimental nodal data
+    plt.scatter(exp_nodes_mm, exp_disp_abs, label='Pokinator/DIC Experimental', 
+                color='#ff7f0e', marker='x', s=60, linewidths=2, zorder=3)
+    
+    # Annotate load position(s)
+    for i, a_loc in enumerate(locs):
+        label_str = 'Load Application Point' if i == 0 else ""
+        plt.axvline(x=a_loc, color='gray', linestyle='--', alpha=0.5, label=label_str)
+    
+    # Dynamic Formatting
+    if len(weights) == 1:
+        subtitle = f"(Load: {weights[0]}g at {locs[0]}mm)"
+    else:
+        subtitle = f"(Multiple Loads: {len(weights)} Points of Contact)"
+        
+    plt.title(f'Beam Deflection Profile: Experimental vs. Beam Theories\n{subtitle}', 
+              fontsize=14, fontweight='bold')
+    plt.xlabel('Distance from Clamped Base, X (mm)', fontsize=12)
+    plt.ylabel('Absolute Deflection, Z (mm)', fontsize=12)
+    plt.grid(True, linestyle=':', alpha=0.7)
+    plt.legend(fontsize=11)
+    plt.tight_layout()
+    
+    plt.show()
+
 def single_point_euler_beam():
     # 1. Define your sample nodes (nx2 vector)
     #nodes = np.array([[60, -97]])
@@ -227,7 +444,7 @@ def single_point_euler_beam():
     averaging_radius_mm = 1
     
     # 3. Process the file
-    df = import_image_csv(r"C:\Users\Haziq Sabri\pokinator_env\DIC Data\3-point-set\B0002.csv")
+    df = import_image_csv(r"C:\Users\Haziq Sabri\pokinator_env\DIC Data\3-point-set\B0004.csv")# change for each load case (B0002 = Load 1)
     z_disp_vector = nodal_displacements(nodes, df, averaging_radius_mm)
     #print(z_disp_vector)
 
@@ -235,7 +452,12 @@ def single_point_euler_beam():
     # compare_beam_theory(20, 0.970, 200, 68.9, 110.10, 150, abs(nodes[:,1]), z_disp_vector)
     # compare_beam_theory(20, 0.970, 200, 64.18, 110.10, 150, abs(nodes[:,1]), z_disp_vector) # 3-point-set load 3 
     # compare_beam_theory(20, 0.970, 200, 64.18, 187.73, 100, abs(nodes[:,1]), z_disp_vector) # 3-point-set load 2
-    compare_beam_theory(20, 0.970, 200, 64.18, 262.64, 50, abs(nodes[:,1]), z_disp_vector) # 3-point-set load 1
+    # compare_beam_theory(20, 0.970, 200, 64.18, 262.64, 50, abs(nodes[:,1]), z_disp_vector) # 3-point-set load 1
+    # compare_beam_theory(weight_g=262.64, load_loc_mm=50, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=z_disp_vector)
+    # compare_beam_theory_timoshenko(weight_g=262.64, load_loc_mm=50, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=z_disp_vector)
+    # compare_both_beam_theories(weight_g=262.64, load_loc_mm=50, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=z_disp_vector) # load 1
+    # compare_both_beam_theories(weight_g=187.73, load_loc_mm=100, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=z_disp_vector) # load 2
+    compare_both_beam_theories(weight_g=110.10, load_loc_mm=150, exp_nodes_mm=abs(nodes[:,1]), exp_disp_mm=z_disp_vector) # load 3
 
 def single_element_beam_k(node_loc, image_paths, force_csv_path, width, thickness, length, averaging_radius=2.0):
     """
@@ -490,7 +712,7 @@ def plot_norm_matrix_heatmap(matrix, title="Normalized Deflection Matrix"):
     plt.show()
 
 if __name__ == "__main__":
-    # single_point_euler_beam()
+    single_point_euler_beam()
     # single_element_beam_k(node_loc=[0, -100],
     #                       image_paths=[r"C:\Users\Haziq Sabri\pokinator_env\DIC Data\Single-Element-Beam-k-1\B0002.csv",
     #                                    r"C:\Users\Haziq Sabri\pokinator_env\DIC Data\Single-Element-Beam-k-1\B0003.csv",
@@ -501,11 +723,11 @@ if __name__ == "__main__":
     #                         force_csv_path=r"C:\Users\Haziq Sabri\pokinator_env\Rec. Forces\Euler Beam v2\Single-Element_Beam-k-1.csv",
     #                         width=20, thickness=0.970, length=100, averaging_radius=1)
 
-    zero_loc = -30
-    nodes = np.array([[0, zero_loc-(i * 10)] for i in range(15)])
-    F, X, K = extract_k_matrix(force_file_path=r'C:\Users\Haziq Sabri\pokinator_env\Rec. Forces\Euler Beam v2\Euler-Beam-K-Extract-1.csv',
-                     dic_folder_path=r'C:\Users\Haziq Sabri\pokinator_env\DIC Data\Euler-Beam-K-Extract-1',
-                     node_locations=nodes)
+    # zero_loc = -30
+    # nodes = np.array([[0, zero_loc-(i * 10)] for i in range(15)])
+    # F, X, K = extract_k_matrix(force_file_path=r'C:\Users\Haziq Sabri\pokinator_env\Rec. Forces\Euler Beam v2\Euler-Beam-K-Extract-1.csv',
+    #                  dic_folder_path=r'C:\Users\Haziq Sabri\pokinator_env\DIC Data\Euler-Beam-K-Extract-1',
+    #                  node_locations=nodes)
 
     # nodes = np.array([[0, -80-(i * 10)] for i in range(10)])
     # F, X, K = extract_k_matrix(force_file_path=r'C:\Users\Haziq Sabri\pokinator_env\Rec. Forces\Euler Beam v2\Euler-Beam-K-Extract-1_Reduced-1.csv',
